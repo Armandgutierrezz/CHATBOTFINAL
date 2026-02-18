@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         input: [
           {
             role: "system",
-            content: "You are Rushy, the assistant of Rush Studio."
+            content: "You are Rushy, the assistant of Rush Studio. Speak like a premium digital consultant, clear, modern, confident."
           },
           {
             role: "user",
@@ -30,9 +30,13 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    return res.status(200).json({
-      reply: data.output_text || data
-    });
+    // extrae texto correctamente
+    let reply =
+      data?.output?.[1]?.content?.[0]?.text ||
+      data?.output?.[0]?.content?.[0]?.text ||
+      "I couldn't answer that.";
+
+    return res.status(200).json({ reply });
 
   } catch (error) {
     console.error(error);
