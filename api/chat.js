@@ -22,7 +22,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-5",
         max_output_tokens: 120,
-        temperature: 0.6,
         input: [
           { role: "system", content: RUSH_CONTEXT },
           { role: "user", content: message },
