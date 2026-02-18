@@ -2,7 +2,7 @@ import { RUSH_CONTEXT } from "./rush-context.js"
 
 export default async function handler(req, res) {
 
-  // ✅ CORS
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
@@ -16,7 +16,10 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" })
     }
 
-    const body = req.body || {}
+    const body = typeof req.body === "string"
+      ? JSON.parse(req.body)
+      : req.body || {}
+
     const message = body.message || "Hello"
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -26,16 +29,20 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-5",
+        model: "gpt-4.1-mini",
         max_output_tokens: 120,
         input: [
           {
             role: "system",
-            content: RUSH_CONTEXT
+            content: [
+              { type: "text", text: RUSH_CONTEXT }
+            ]
           },
           {
             role: "user",
-            content: message
+            content: [
+              { type: "text", text: message }
+            ]
           }
         ]
       })
@@ -43,15 +50,11 @@ export default async function handler(req, res) {
 
     const data = await response.json()
 
-    // ✅ EXTRAER TEXTO CORRECTAMENTE
     const text =
-      data?.output?.find(o => o.type === "message")
-        ?.content?.[0]?.text
-      || "Hola, soy Rushy. ¿En qué puedo ayudarte?"
+      data.output_text ||
+      "Hola, soy Rushy. ¿En qué puedo ayudarte?"
 
-    return res.status(200).json({
-      reply: text
-    })
+    return res.status(200).json({ reply: text })
 
   } catch (error) {
     console.error(error)
