@@ -11,22 +11,22 @@ export default async function handler(req, res) {
     return res.status(200).end()
   }
 
-  try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" })
-    }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" })
+  }
 
+  try {
     const body = req.body || {}
     const message = body.message || "Hello"
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-5",
+        model: "gpt-4.1",   // 🔴 usa este por ahora (gpt-5 da problemas si no tienes acceso)
         max_output_tokens: 200,
         input: [
           {
@@ -45,21 +45,29 @@ export default async function handler(req, res) {
       })
     })
 
-  console.log("OPENAI RESPONSE:", JSON.stringify(data, null, 2))
+    const data = await openaiResponse.json()
 
+    // 🔴 SI OPENAI FALLA, MOSTRAR ERROR REAL
+    if (!openaiResponse.ok) {
+      console.error("OpenAI error:", data)
+      return res.status(500).json({
+        error: "OpenAI error",
+        details: data?.error?.message || data
+      })
+    }
 
-    // ✅ EXTRAER TEXTO CORRECTO (TODAS LAS VERSIONES)
+    // ✅ EXTRAER TEXTO DE FORMA SEGURA
     const text =
       data?.output_text ||
       data?.output?.find(o => o.type === "message")?.content?.[0]?.text ||
-      "Hola, soy Rushy. ¿En qué puedo ayudarte?"
+      "Hola, soy Rushy. ¿Cómo puedo ayudarte?"
 
     return res.status(200).json({
       reply: text
     })
 
   } catch (error) {
-    console.error(error)
+    console.error("SERVER ERROR:", error)
     return res.status(500).json({
       error: "Server error",
       details: error.message
