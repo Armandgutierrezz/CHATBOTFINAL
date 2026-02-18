@@ -1,6 +1,6 @@
-import { RUSH_CONTEXT } from "./rush-context.js"
 
 export default async function handler(req, res) {
+import { RUSH_CONTEXT } from "./rush-context.js"
 
   // ✅ CORS
   res.setHeader("Access-Control-Allow-Origin", "*")
