@@ -1,6 +1,8 @@
+import { RUSH_CONTEXT } from "./rush-context.js"
+
 export default async function handler(req, res) {
 
-  // ✅ CORS FIX
+  // ✅ CORS
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
@@ -25,10 +27,11 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-5",
+        max_output_tokens: 120,
         input: [
           {
             role: "system",
-            content: "You are Rushy, the assistant of Rush Studio."
+            content: RUSH_CONTEXT
           },
           {
             role: "user",
@@ -40,10 +43,11 @@ export default async function handler(req, res) {
 
     const data = await response.json()
 
-    // ✅ RETURN SIMPLE STRING
+    // ✅ EXTRAER TEXTO CORRECTAMENTE
     const text =
       data?.output?.find(o => o.type === "message")
-        ?.content?.[0]?.text || "Hola, soy Rushy."
+        ?.content?.[0]?.text
+      || "Hola, soy Rushy. ¿En qué puedo ayudarte?"
 
     return res.status(200).json({
       reply: text
