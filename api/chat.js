@@ -1,11 +1,21 @@
 export default async function handler(req, res) {
+
+  // ✅ CORS FIX
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end()
+  }
+
   try {
     if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
+      return res.status(405).json({ error: "Method not allowed" })
     }
 
-    const body = req.body || {};
-    const message = body.message || "Hello";
+    const body = req.body || {}
+    const message = body.message || "Hello"
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -18,7 +28,7 @@ export default async function handler(req, res) {
         input: [
           {
             role: "system",
-            content: "You are Rushy, the assistant of Rush Studio. Speak like a premium digital consultant, clear, modern, confident."
+            content: "You are Rushy, the assistant of Rush Studio."
           },
           {
             role: "user",
@@ -26,23 +36,24 @@ export default async function handler(req, res) {
           }
         ]
       })
-    });
+    })
 
-    const data = await response.json();
+    const data = await response.json()
 
-    // extrae texto correctamente
-    let reply =
-      data?.output?.[1]?.content?.[0]?.text ||
-      data?.output?.[0]?.content?.[0]?.text ||
-      "I couldn't answer that.";
+    // ✅ RETURN SIMPLE STRING
+    const text =
+      data?.output?.find(o => o.type === "message")
+        ?.content?.[0]?.text || "Hola, soy Rushy."
 
-    return res.status(200).json({ reply });
+    return res.status(200).json({
+      reply: text
+    })
 
   } catch (error) {
-    console.error(error);
+    console.error(error)
     return res.status(500).json({
       error: "Server error",
       details: error.message
-    });
+    })
   }
 }
