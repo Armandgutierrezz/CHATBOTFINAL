@@ -45,7 +45,8 @@ export default async function handler(req, res) {
       })
     })
 
-    const data = await response.json()
+  console.log("OPENAI RESPONSE:", JSON.stringify(data, null, 2))
+
 
     // ✅ EXTRAER TEXTO CORRECTO (TODAS LAS VERSIONES)
     const text =
