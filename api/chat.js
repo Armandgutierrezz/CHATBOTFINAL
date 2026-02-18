@@ -26,38 +26,44 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-5",
-        max_output_tokens: 120,
+  model: "gpt-5",
+  max_output_tokens: 200,
 
-        input: [
-          {
-            role: "system",
-            content: RUSH_CONTEXT
-          },
-          {
-            role: "user",
-            content: message
-          }
-        ]
-      })
-    })
+  input: [
+    {
+      role: "system",
+      content: [
+        { type: "text", text: RUSH_CONTEXT }
+      ]
+    },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: message }
+      ]
+    }
+  ]
+})
+
+
 
     const data = await response.json()
 
     // 🔥 FIX REAL: usar output_text
     const text =
-      data.output_text ||
-      "Hola, soy Rushy. ¿En qué puedo ayudarte?"
+  data?.output_text ||
+  data?.output?.find(o => o.type === "message")?.content?.[0]?.text ||
+  "Hola, soy Rushy. ¿En qué puedo ayudarte?"
 
-    return res.status(200).json({
-      reply: text
-    })
+return res.status(200).json({
+  reply: text
+})
 
-  } catch (error) {
-    console.error(error)
-    return res.status(500).json({
-      error: "Server error",
-      details: error.message
-    })
-  }
+} catch (error) {
+  console.error(error)
+  return res.status(500).json({
+    error: "Server error",
+    details: error.message
+  })
+}
 }
