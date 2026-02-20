@@ -23,7 +23,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-5",
         max_output_tokens: 400,
-        truncation: "auto",
         input: [
           { role: "system", content: RUSH_CONTEXT },
           ...messages.map(m => ({
@@ -43,23 +42,29 @@ export default async function handler(req, res) {
       })
     }
 
-    // ✅ EXTRACTOR UNIVERSAL GPT-5
+    // 🔥 EXTRACTOR UNIVERSAL REAL
     let text = ""
 
-    function dig(obj) {
-      if (!obj) return
-      if (typeof obj === "string") text += obj + " "
-      if (Array.isArray(obj)) obj.forEach(dig)
-      if (typeof obj === "object") {
-        if (obj.text) text += obj.text + " "
-        if (obj.value) text += obj.value + " "
-        if (obj.output_text) text += obj.output_text + " "
-        if (obj.content) dig(obj.content)
-        if (obj.parts) dig(obj.parts)
+    function dig(x) {
+      if (!x) return
+
+      if (typeof x === "string") {
+        text += x + " "
+        return
+      }
+
+      if (Array.isArray(x)) {
+        x.forEach(dig)
+        return
+      }
+
+      if (typeof x === "object") {
+        for (const k in x) dig(x[k])
       }
     }
 
-    if (data.output_text) {
+    // intenta output_text primero
+    if (typeof data.output_text === "string") {
       text = data.output_text
     } else {
       dig(data.output)
@@ -67,8 +72,9 @@ export default async function handler(req, res) {
 
     text = text.trim()
 
-    if (!text) {
-      text = "Perfecto, cuéntame un poco más para ayudarte mejor."
+    // solo fallback si no hay texto real
+    if (!text || text.length < 3) {
+      text = "Ups, algo raro pasó. Escríbeme otra vez."
     }
 
     return res.status(200).json({ reply: text })
