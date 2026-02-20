@@ -23,14 +23,16 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-5",
         max_output_tokens: 300,
+
+        // ✅ FORMATO CORRECTO PARA GPT-5
         input: [
           {
             role: "system",
-            content: [{ type: "input_text", text: RUSH_CONTEXT }]
+            content: RUSH_CONTEXT
           },
           ...messages.map(m => ({
             role: m.role,
-            content: [{ type: "input_text", text: m.content }]
+            content: m.content
           }))
         ]
       })
@@ -45,10 +47,10 @@ export default async function handler(req, res) {
       })
     }
 
-    // 🔥 extracción robusta compatible con GPT-5
+    // ✅ extracción segura
     let text = ""
 
-    if (data.output_text) {
+    if (typeof data.output_text === "string") {
       text = data.output_text
     }
 
