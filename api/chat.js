@@ -21,8 +21,8 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-4.1",
-        max_output_tokens: 200,
+        model: "gpt-5.0",
+        max_output_tokens: 300,
         input: [
           {
             role: "system",
@@ -45,10 +45,23 @@ export default async function handler(req, res) {
       })
     }
 
-    const text =
-      data?.output_text ||
-      data?.output?.find(o => o.type === "message")?.content?.[0]?.text ||
-      "Hola, soy Rushy. ¿Cómo puedo ayudarte?"
+    // 🔥 extracción robusta compatible con GPT-5
+    let text = ""
+
+    if (data.output_text) {
+      text = data.output_text
+    }
+
+    if (!text && Array.isArray(data.output)) {
+      text = data.output
+        .flatMap(o => o.content || [])
+        .map(c => c.text || c.value || "")
+        .join("")
+    }
+
+    if (!text) {
+      text = "Ups, no pude responder bien. Escríbeme otra vez."
+    }
 
     return res.status(200).json({ reply: text })
 
