@@ -22,15 +22,10 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-5",
-        max_output_tokens: 300,
+        max_output_tokens: 400,
         truncation: "auto",
-
-        // ✅ FORMATO CORRECTO GPT-5
         input: [
-          {
-            role: "system",
-            content: RUSH_CONTEXT
-          },
+          { role: "system", content: RUSH_CONTEXT },
           ...messages.map(m => ({
             role: m.role,
             content: m.content
@@ -48,31 +43,32 @@ export default async function handler(req, res) {
       })
     }
 
-    // ✅ EXTRACTOR GPT-5 ULTRA ROBUSTO
+    // ✅ EXTRACTOR UNIVERSAL GPT-5
     let text = ""
 
-    if (typeof data.output_text === "string" && data.output_text.trim()) {
-      text = data.output_text.trim()
-    }
-
-    if (!text && Array.isArray(data.output)) {
-      const chunks = []
-
-      for (const item of data.output) {
-        if (!item?.content) continue
-
-        for (const c of item.content) {
-          if (typeof c?.text === "string") chunks.push(c.text)
-          if (typeof c?.value === "string") chunks.push(c.value)
-          if (typeof c?.content === "string") chunks.push(c.content)
-        }
+    function dig(obj) {
+      if (!obj) return
+      if (typeof obj === "string") text += obj + " "
+      if (Array.isArray(obj)) obj.forEach(dig)
+      if (typeof obj === "object") {
+        if (obj.text) text += obj.text + " "
+        if (obj.value) text += obj.value + " "
+        if (obj.output_text) text += obj.output_text + " "
+        if (obj.content) dig(obj.content)
+        if (obj.parts) dig(obj.parts)
       }
-
-      text = chunks.join("").trim()
     }
+
+    if (data.output_text) {
+      text = data.output_text
+    } else {
+      dig(data.output)
+    }
+
+    text = text.trim()
 
     if (!text) {
-      text = "Perfecto. Cuéntame un poco más y te ayudo."
+      text = "Perfecto, cuéntame un poco más para ayudarte mejor."
     }
 
     return res.status(200).json({ reply: text })
