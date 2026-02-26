@@ -1,5 +1,5 @@
 import { RUSH_CONTEXT } from "./rush-context.js"
-import { saveLeadToAirtable } from "./airtable.js"
+import { createLeadInAirtable, updateLeadInAirtable } from "./airtable.js"
 
 export default async function handler(req, res) {
 
@@ -8,21 +8,16 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end()
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" })
-  }
+  if (req.method === "OPTIONS") return res.status(200).end()
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
 
   try {
-
     const body = req.body || {}
     const messages = body.messages || []
+    const recordId = body.recordId || null  // viene del frontend
 
     // ====================================================
-    // 🧠 EXTRAER DATOS BÁSICOS DEL LEAD (regex)
+    // 🧠 EXTRAER DATOS BÁSICOS (regex)
     // ====================================================
 
     let email = ""
@@ -32,7 +27,6 @@ export default async function handler(req, res) {
       .map(m => `${m.role}: ${m.content}`)
       .join("\n")
 
-    // 📩 Email
     for (const m of messages) {
       if (!email) {
         const match = m.content.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
@@ -40,7 +34,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 📱 WhatsApp
     for (const m of messages) {
       if (!whatsapp) {
         const match = m.content.match(/\+?\d{7,15}/)
@@ -62,14 +55,8 @@ export default async function handler(req, res) {
         model: "gpt-5",
         max_output_tokens: 1000,
         input: [
-          {
-            role: "system",
-            content: RUSH_CONTEXT
-          },
-          ...messages.map(m => ({
-            role: m.role,
-            content: m.content
-          }))
+          { role: "system", content: RUSH_CONTEXT },
+          ...messages.map(m => ({ role: m.role, content: m.content }))
         ]
       })
     })
@@ -77,14 +64,11 @@ export default async function handler(req, res) {
     const data = await openaiResponse.json()
 
     if (!openaiResponse.ok) {
-      return res.status(500).json({
-        error: "OpenAI error",
-        details: data?.error?.message || data
-      })
+      return res.status(500).json({ error: "OpenAI error", details: data?.error?.message || data })
     }
 
     // ====================================================
-    // ✨ EXTRAER RESPUESTA DEL CHAT
+    // ✨ EXTRAER RESPUESTA
     // ====================================================
 
     let text = ""
@@ -97,32 +81,25 @@ export default async function handler(req, res) {
       for (const item of data.output) {
         if (item.type === "message" && Array.isArray(item.content)) {
           for (const part of item.content) {
-            if (part.type === "output_text" && part.text) text += part.text + " "
-            if (part.type === "text" && part.text) text += part.text + " "
-            if (part.type === "text" && part.value) text += part.value + " "
+            if (part.text) text += part.text + " "
+            if (part.value) text += part.value + " "
           }
         }
       }
     }
 
-    text = text.trim()
-
-    if (!text) {
-      text = "Ups, algo raro pasó. Escríbeme otra vez."
-    }
+    text = text.trim() || "Ups, algo raro pasó. Escríbeme otra vez."
 
     // ====================================================
-    // 🟢 GUARDAR LEAD EN AIRTABLE
-    // Solo cuando ya tengamos email + whatsapp (lead completo)
+    // 🤖 EXTRAER NOMBRE, NECESIDAD Y SERVICIO CON IA
     // ====================================================
 
-    if (email && whatsapp) {
+    let name = ""
+    let need = ""
+    let service = ""
 
-      let name = ""
-      let need = ""
-      let service = ""
-
-      // 🤖 Extraer nombre, necesidad y servicio con IA
+    // Solo extraer si hay algo que guardar
+    if (email || whatsapp) {
       try {
         const extractResponse = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
@@ -136,13 +113,10 @@ export default async function handler(req, res) {
             input: [
               {
                 role: "system",
-                content: `Eres un extractor de datos de conversaciones de ventas. Analiza la conversación y devuelve SOLO un JSON válido con este formato exacto, sin texto adicional, sin backticks, sin explicaciones:
-{"name": "nombre real de la persona si fue mencionado explícitamente, si no deja vacío", "need": "descripción de 1 línea sobre el problema o necesidad del negocio del cliente, si no hay info deja vacío", "service": "clasifica en exactamente uno de estos: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado. Si no hay suficiente info deja vacío"}`
+                content: `Eres un extractor de datos. Analiza la conversación y devuelve SOLO un JSON válido sin backticks ni texto extra:
+{"name": "nombre real si fue mencionado, si no vacío", "need": "problema o necesidad del negocio en 1 línea, si no hay info vacío", "service": "uno exacto de: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado. Si no hay info vacío"}`
               },
-              {
-                role: "user",
-                content: conversation
-              }
+              { role: "user", content: conversation }
             ]
           })
         })
@@ -153,7 +127,6 @@ export default async function handler(req, res) {
         if (typeof extractData.output_text === "string") {
           extractText = extractData.output_text
         }
-
         if (!extractText && Array.isArray(extractData.output)) {
           for (const item of extractData.output) {
             if (item.type === "message" && Array.isArray(item.content)) {
@@ -165,46 +138,49 @@ export default async function handler(req, res) {
           }
         }
 
-        extractText = extractText.trim()
-        // Limpiar posibles backticks que el modelo meta igual
         extractText = extractText.replace(/```json|```/g, "").trim()
-
-        console.log("Extracción IA:", extractText)
-
         const parsed = JSON.parse(extractText)
         name = parsed.name || ""
         need = parsed.need || ""
         service = parsed.service || ""
 
-      } catch (extractError) {
-        console.error("Error extrayendo datos con IA:", extractError.message)
+      } catch (err) {
+        console.error("Error extrayendo datos:", err.message)
       }
+    }
 
-      // 💾 Guardar en Airtable
-      console.log("Guardando lead:", { name, email, whatsapp, need, service })
+    // ====================================================
+    // 🟢 GUARDAR / ACTUALIZAR EN AIRTABLE PROGRESIVAMENTE
+    // ====================================================
+
+    let newRecordId = recordId
+
+    if (email || whatsapp) {
+      const fields = { name, email, whatsapp, need, service, conversation }
+      console.log("Airtable campos:", { name, email, whatsapp, need, service })
+
       try {
-        await saveLeadToAirtable({
-          name,
-          email,
-          whatsapp,
-          need,
-          service,
-          conversation
-        })
-      } catch (airtableError) {
-        console.error("Error guardando en Airtable:", airtableError.message)
+        if (recordId) {
+          // Ya existe el registro → actualizar
+          await updateLeadInAirtable(recordId, fields)
+        } else {
+          // Primera vez que hay datos → crear
+          newRecordId = await createLeadInAirtable(fields)
+        }
+      } catch (err) {
+        console.error("Error Airtable:", err.message)
       }
     }
 
     // ====================================================
 
-    return res.status(200).json({ reply: text })
+    return res.status(200).json({
+      reply: text,
+      recordId: newRecordId  // devuelve el id al frontend para próximas actualizaciones
+    })
 
   } catch (error) {
     console.error(error)
-    return res.status(500).json({
-      error: "Server error",
-      details: error.message
-    })
+    return res.status(500).json({ error: "Server error", details: error.message })
   }
 }
