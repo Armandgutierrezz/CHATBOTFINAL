@@ -130,19 +130,25 @@ export default async function handler(req, res) {
     }
 
     // ====================================================
-    // 🟢 GUARDAR LEAD EN AIRTABLE (si hay email)
+    // 🟢 GUARDAR LEAD EN AIRTABLE (solo si hay email)
     // ====================================================
 
-   console.log("EMAIL:", email)
-
-await saveLeadToAirtable({
-  name,
-  email,
-  whatsapp,
-  need,
-  service,
-  conversation
-})
+    if (email) {
+      console.log("Guardando lead:", { name, email, whatsapp })
+      try {
+        await saveLeadToAirtable({
+          name,
+          email,
+          whatsapp,
+          need,
+          service,
+          conversation
+        })
+      } catch (airtableError) {
+        console.error("Error guardando en Airtable:", airtableError.message)
+        // No interrumpimos la respuesta al usuario si falla Airtable
+      }
+    }
 
     // ====================================================
 
