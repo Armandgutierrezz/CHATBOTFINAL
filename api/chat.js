@@ -1,4 +1,5 @@
 import { RUSH_CONTEXT } from "./rush-context.js"
+import { saveLeadToAirtable } from "./airtable.js"
 
 export default async function handler(req, res) {
 
@@ -20,7 +21,49 @@ export default async function handler(req, res) {
     const body = req.body || {}
     const messages = body.messages || []
 
+    // ====================================================
+    // 🧠 EXTRAER DATOS DEL LEAD
+    // ====================================================
+
+    let name = ""
+    let email = ""
+    let whatsapp = ""
+    let need = ""
+    let service = ""
+
+    const conversation = messages
+      .map(m => `${m.role}: ${m.content}`)
+      .join("\n")
+
+    // 📩 Email
+    for (const m of messages) {
+      if (!email) {
+        const match = m.content.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
+        if (match) email = match[0]
+      }
+    }
+
+    // 📱 WhatsApp
+    for (const m of messages) {
+      if (!whatsapp) {
+        const match = m.content.match(/\+?\d{7,15}/)
+        if (match) whatsapp = match[0]
+      }
+    }
+
+    // 👤 Nombre (simple)
+    const firstUser = messages.find(m => m.role === "user")
+    if (firstUser) {
+      const words = firstUser.content.split(" ")
+      if (words.length <= 3) {
+        name = firstUser.content
+      }
+    }
+
+    // ====================================================
     // 🔥 LLAMADA A OPENAI
+    // ====================================================
+
     const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -45,7 +88,6 @@ export default async function handler(req, res) {
 
     const data = await openaiResponse.json()
 
-    // 🔴 ERROR OPENAI
     if (!openaiResponse.ok) {
       return res.status(500).json({
         error: "OpenAI error",
@@ -54,33 +96,25 @@ export default async function handler(req, res) {
     }
 
     // ====================================================
-    // 🔥 EXTRACTOR LIMPIO SOLO TEXTO DEL ASSISTANT
+    // ✨ EXTRAER RESPUESTA
     // ====================================================
 
     let text = ""
 
-    // 1️⃣ campo directo (cuando existe)
     if (typeof data.output_text === "string") {
       text = data.output_text
     }
 
-    // 2️⃣ buscar dentro de output messages
     if (!text && Array.isArray(data.output)) {
       for (const item of data.output) {
-
         if (item.type === "message" && Array.isArray(item.content)) {
-
           for (const part of item.content) {
-
             if (part.type === "output_text" && part.text) {
               text += part.text + " "
             }
-
-            // soporte alternativo (algunos deployments)
             if (part.type === "text" && part.text) {
               text += part.text + " "
             }
-
             if (part.type === "text" && part.value) {
               text += part.value + " "
             }
@@ -91,9 +125,23 @@ export default async function handler(req, res) {
 
     text = text.trim()
 
-    // 🔴 fallback solo si no hay nada
     if (!text) {
       text = "Ups, algo raro pasó. Escríbeme otra vez."
+    }
+
+    // ====================================================
+    // 🟢 GUARDAR LEAD EN AIRTABLE (si hay email)
+    // ====================================================
+
+    if (email) {
+      await saveLeadToAirtable({
+        name,
+        email,
+        whatsapp,
+        need,
+        service,
+        conversation
+      })
     }
 
     // ====================================================
