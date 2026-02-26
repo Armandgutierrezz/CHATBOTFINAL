@@ -1,7 +1,9 @@
 export async function saveLeadToAirtable(lead) {
   const url = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`
 
-  await fetch(url, {
+  console.log("Airtable URL:", url)
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.AIRTABLE_TOKEN}`,
@@ -18,4 +20,14 @@ export async function saveLeadToAirtable(lead) {
       }
     })
   })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    console.error("Airtable error:", JSON.stringify(result))
+    throw new Error(`Airtable error: ${JSON.stringify(result)}`)
+  }
+
+  console.log("Airtable success:", result.id)
+  return result
 }
