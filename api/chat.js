@@ -133,16 +133,16 @@ export default async function handler(req, res) {
     // 🟢 GUARDAR LEAD EN AIRTABLE (si hay email)
     // ====================================================
 
-    if (email) {
-      await saveLeadToAirtable({
-        name,
-        email,
-        whatsapp,
-        need,
-        service,
-        conversation
-      })
-    }
+   console.log("EMAIL:", email)
+
+await saveLeadToAirtable({
+  name,
+  email,
+  whatsapp,
+  need,
+  service,
+  conversation
+})
 
     // ====================================================
 
