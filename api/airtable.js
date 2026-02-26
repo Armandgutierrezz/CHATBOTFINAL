@@ -1,33 +1,59 @@
-export async function saveLeadToAirtable(lead) {
-  const url = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`
+const BASE_URL = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`
 
-  console.log("Airtable URL:", url)
+const HEADERS = {
+  Authorization: `Bearer ${process.env.AIRTABLE_TOKEN}`,
+  "Content-Type": "application/json",
+}
 
-  const response = await fetch(url, {
+// Crea un nuevo registro y devuelve el recordId
+export async function createLeadInAirtable(fields) {
+  const body = { fields: buildFields(fields) }
+
+  const response = await fetch(BASE_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.AIRTABLE_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      fields: {
-        Nombre: lead.name || "",
-        "Correo electrónico": lead.email || "",
-        WhatsApp: lead.whatsapp || "",
-        Necesidad: lead.need || "",
-        Servicio: lead.service || "",
-        Conversación: lead.conversation || ""
-      }
-    })
+    headers: HEADERS,
+    body: JSON.stringify(body),
   })
 
   const result = await response.json()
 
   if (!response.ok) {
-    console.error("Airtable error:", JSON.stringify(result))
+    console.error("Airtable create error:", JSON.stringify(result))
     throw new Error(`Airtable error: ${JSON.stringify(result)}`)
   }
 
-  console.log("Airtable success:", result.id)
-  return result
+  console.log("Airtable created:", result.id)
+  return result.id
+}
+
+// Actualiza un registro existente por recordId
+export async function updateLeadInAirtable(recordId, fields) {
+  const body = { fields: buildFields(fields) }
+
+  const response = await fetch(`${BASE_URL}/${recordId}`, {
+    method: "PATCH",
+    headers: HEADERS,
+    body: JSON.stringify(body),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    console.error("Airtable update error:", JSON.stringify(result))
+    throw new Error(`Airtable error: ${JSON.stringify(result)}`)
+  }
+
+  console.log("Airtable updated:", result.id)
+  return result.id
+}
+
+function buildFields(fields) {
+  const out = {}
+  if (fields.name)         out["Nombre"] = fields.name
+  if (fields.email)        out["Correo electrónico"] = fields.email
+  if (fields.whatsapp)     out["WhatsApp"] = fields.whatsapp
+  if (fields.need)         out["Necesidad"] = fields.need
+  if (fields.service)      out["Servicio"] = fields.service
+  if (fields.conversation) out["Conversación"] = fields.conversation
+  return out
 }
