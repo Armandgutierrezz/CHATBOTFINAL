@@ -22,14 +22,11 @@ export default async function handler(req, res) {
     const messages = body.messages || []
 
     // ====================================================
-    // 🧠 EXTRAER DATOS DEL LEAD
+    // 🧠 EXTRAER DATOS BÁSICOS DEL LEAD (regex)
     // ====================================================
 
-    let name = ""
     let email = ""
     let whatsapp = ""
-    let need = ""
-    let service = ""
 
     const conversation = messages
       .map(m => `${m.role}: ${m.content}`)
@@ -51,15 +48,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 👤 Nombre
-    const firstUser = messages.find(m => m.role === "user")
-    if (firstUser) {
-      const words = firstUser.content.split(" ")
-      if (words.length <= 3) {
-        name = firstUser.content
-      }
-    }
-
     // ====================================================
     // 🔥 LLAMADA A OPENAI (respuesta del chat)
     // ====================================================
@@ -72,7 +60,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-5",
-        max_output_tokens: 1500,
+        max_output_tokens: 1000,
         input: [
           {
             role: "system",
@@ -96,7 +84,7 @@ export default async function handler(req, res) {
     }
 
     // ====================================================
-    // ✨ EXTRAER RESPUESTA
+    // ✨ EXTRAER RESPUESTA DEL CHAT
     // ====================================================
 
     let text = ""
@@ -130,7 +118,11 @@ export default async function handler(req, res) {
 
     if (email && whatsapp) {
 
-      // 🤖 Extraer necesidad y servicio con IA
+      let name = ""
+      let need = ""
+      let service = ""
+
+      // 🤖 Extraer nombre, necesidad y servicio con IA
       try {
         const extractResponse = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
@@ -144,10 +136,8 @@ export default async function handler(req, res) {
             input: [
               {
                 role: "system",
-                content: `Eres un extractor de datos. Analiza la conversación y devuelve SOLO un JSON con este formato exacto, sin texto adicional ni backticks:
-{"need": "descripción breve de la necesidad del cliente", "service": "uno de estos valores exactos: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado"}
-
-Si no hay suficiente info para algún campo, déjalo como string vacío "".`
+                content: `Eres un extractor de datos de conversaciones de ventas. Analiza la conversación y devuelve SOLO un JSON válido con este formato exacto, sin texto adicional, sin backticks, sin explicaciones:
+{"name": "nombre real de la persona si fue mencionado explícitamente, si no deja vacío", "need": "descripción de 1 línea sobre el problema o necesidad del negocio del cliente, si no hay info deja vacío", "service": "clasifica en exactamente uno de estos: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado. Si no hay suficiente info deja vacío"}`
               },
               {
                 role: "user",
@@ -169,17 +159,25 @@ Si no hay suficiente info para algún campo, déjalo como string vacío "".`
             if (item.type === "message" && Array.isArray(item.content)) {
               for (const part of item.content) {
                 if (part.text) extractText += part.text
+                if (part.value) extractText += part.value
               }
             }
           }
         }
 
-        const parsed = JSON.parse(extractText.trim())
+        extractText = extractText.trim()
+        // Limpiar posibles backticks que el modelo meta igual
+        extractText = extractText.replace(/```json|```/g, "").trim()
+
+        console.log("Extracción IA:", extractText)
+
+        const parsed = JSON.parse(extractText)
+        name = parsed.name || ""
         need = parsed.need || ""
         service = parsed.service || ""
 
       } catch (extractError) {
-        console.error("Error extrayendo need/service:", extractError.message)
+        console.error("Error extrayendo datos con IA:", extractError.message)
       }
 
       // 💾 Guardar en Airtable
