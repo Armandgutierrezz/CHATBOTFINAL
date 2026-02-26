@@ -14,10 +14,10 @@ export default async function handler(req, res) {
   try {
     const body = req.body || {}
     const messages = body.messages || []
-    const recordId = body.recordId || null  // viene del frontend
+    const recordId = body.recordId || null
 
     // ====================================================
-    // 🧠 EXTRAER DATOS BÁSICOS (regex)
+    // 🧠 EXTRAER EMAIL Y WHATSAPP (regex)
     // ====================================================
 
     let email = ""
@@ -92,83 +92,90 @@ export default async function handler(req, res) {
 
     // ====================================================
     // 🤖 EXTRAER NOMBRE, NECESIDAD Y SERVICIO CON IA
+    // Siempre que haya al menos 1 mensaje
     // ====================================================
 
     let name = ""
     let need = ""
     let service = ""
 
-    // Solo extraer si hay algo que guardar
-    if (email || whatsapp) {
-      try {
-        const extractResponse = await fetch("https://api.openai.com/v1/responses", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "gpt-5",
-            max_output_tokens: 300,
-            input: [
-              {
-                role: "system",
-                content: `Eres un extractor de datos. Analiza la conversación y devuelve SOLO un JSON válido sin backticks ni texto extra:
-{"name": "nombre real si fue mencionado, si no vacío", "need": "problema o necesidad del negocio en 1 línea, si no hay info vacío", "service": "uno exacto de: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado. Si no hay info vacío"}`
-              },
-              { role: "user", content: conversation }
-            ]
-          })
+    try {
+      const extractResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-5",
+          max_output_tokens: 300,
+          input: [
+            {
+              role: "system",
+              content: `Eres un extractor de datos de conversaciones de ventas. Analiza la conversación y devuelve SOLO un JSON válido sin backticks ni texto extra:
+{"name": "nombre real de la persona si lo mencionó explícitamente (no saludos como 'hola'), si no vacío", "need": "problema o necesidad del negocio en 1 línea, si no hay info vacío", "service": "uno exacto de: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado. Si no hay info vacío"}`
+            },
+            { role: "user", content: conversation }
+          ]
         })
+      })
 
-        const extractData = await extractResponse.json()
-        let extractText = ""
+      const extractData = await extractResponse.json()
+      let extractText = ""
 
-        if (typeof extractData.output_text === "string") {
-          extractText = extractData.output_text
-        }
-        if (!extractText && Array.isArray(extractData.output)) {
-          for (const item of extractData.output) {
-            if (item.type === "message" && Array.isArray(item.content)) {
-              for (const part of item.content) {
-                if (part.text) extractText += part.text
-                if (part.value) extractText += part.value
-              }
+      if (typeof extractData.output_text === "string") {
+        extractText = extractData.output_text
+      }
+      if (!extractText && Array.isArray(extractData.output)) {
+        for (const item of extractData.output) {
+          if (item.type === "message" && Array.isArray(item.content)) {
+            for (const part of item.content) {
+              if (part.text) extractText += part.text
+              if (part.value) extractText += part.value
             }
           }
         }
-
-        extractText = extractText.replace(/```json|```/g, "").trim()
-        const parsed = JSON.parse(extractText)
-        name = parsed.name || ""
-        need = parsed.need || ""
-        service = parsed.service || ""
-
-      } catch (err) {
-        console.error("Error extrayendo datos:", err.message)
       }
+
+      extractText = extractText.replace(/```json|```/g, "").trim()
+      const parsed = JSON.parse(extractText)
+      name = parsed.name || ""
+      need = parsed.need || ""
+      service = parsed.service || ""
+
+      console.log("Extracción IA:", { name, need, service })
+
+    } catch (err) {
+      console.error("Error extrayendo datos:", err.message)
     }
 
     // ====================================================
-    // 🟢 GUARDAR / ACTUALIZAR EN AIRTABLE PROGRESIVAMENTE
+    // 🟢 GUARDAR / ACTUALIZAR EN AIRTABLE
+    // - Crear cuando aparece el email por primera vez
+    // - Actualizar en cada mensaje si ya existe el recordId
     // ====================================================
 
     let newRecordId = recordId
+    const fields = { name, email, whatsapp, need, service, conversation }
 
-    if (email || whatsapp) {
-      const fields = { name, email, whatsapp, need, service, conversation }
-      console.log("Airtable campos:", { name, email, whatsapp, need, service })
-
+    if (email) {
+      console.log("Guardando en Airtable:", { name, email, whatsapp, need, service })
       try {
         if (recordId) {
-          // Ya existe el registro → actualizar
           await updateLeadInAirtable(recordId, fields)
         } else {
-          // Primera vez que hay datos → crear
           newRecordId = await createLeadInAirtable(fields)
         }
       } catch (err) {
         console.error("Error Airtable:", err.message)
+      }
+    } else if (recordId) {
+      // Tiene recordId pero aún no email → igual actualiza lo que tenga (nombre, etc.)
+      console.log("Actualizando sin email:", { name, need, service })
+      try {
+        await updateLeadInAirtable(recordId, fields)
+      } catch (err) {
+        console.error("Error Airtable update:", err.message)
       }
     }
 
@@ -176,7 +183,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       reply: text,
-      recordId: newRecordId  // devuelve el id al frontend para próximas actualizaciones
+      recordId: newRecordId
     })
 
   } catch (error) {
