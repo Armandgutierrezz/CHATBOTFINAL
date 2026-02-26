@@ -72,7 +72,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-5",
-        max_output_tokens: 1500,
+        max_output_tokens: 2200,
         input: [
           {
             role: "system",
