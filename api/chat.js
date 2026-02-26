@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 👤 Nombre (simple)
+    // 👤 Nombre
     const firstUser = messages.find(m => m.role === "user")
     if (firstUser) {
       const words = firstUser.content.split(" ")
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     }
 
     // ====================================================
-    // 🔥 LLAMADA A OPENAI
+    // 🔥 LLAMADA A OPENAI (respuesta del chat)
     // ====================================================
 
     const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
@@ -109,15 +109,9 @@ export default async function handler(req, res) {
       for (const item of data.output) {
         if (item.type === "message" && Array.isArray(item.content)) {
           for (const part of item.content) {
-            if (part.type === "output_text" && part.text) {
-              text += part.text + " "
-            }
-            if (part.type === "text" && part.text) {
-              text += part.text + " "
-            }
-            if (part.type === "text" && part.value) {
-              text += part.value + " "
-            }
+            if (part.type === "output_text" && part.text) text += part.text + " "
+            if (part.type === "text" && part.text) text += part.text + " "
+            if (part.type === "text" && part.value) text += part.value + " "
           }
         }
       }
@@ -130,11 +124,66 @@ export default async function handler(req, res) {
     }
 
     // ====================================================
-    // 🟢 GUARDAR LEAD EN AIRTABLE (solo si hay email)
+    // 🟢 GUARDAR LEAD EN AIRTABLE
+    // Solo cuando ya tengamos email + whatsapp (lead completo)
     // ====================================================
 
-    if (email) {
-      console.log("Guardando lead:", { name, email, whatsapp })
+    if (email && whatsapp) {
+
+      // 🤖 Extraer necesidad y servicio con IA
+      try {
+        const extractResponse = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "gpt-5",
+            max_output_tokens: 300,
+            input: [
+              {
+                role: "system",
+                content: `Eres un extractor de datos. Analiza la conversación y devuelve SOLO un JSON con este formato exacto, sin texto adicional ni backticks:
+{"need": "descripción breve de la necesidad del cliente", "service": "uno de estos valores exactos: Automatización, Desarrollo web, Dashboard, Chatbot, Personalizado"}
+
+Si no hay suficiente info para algún campo, déjalo como string vacío "".`
+              },
+              {
+                role: "user",
+                content: conversation
+              }
+            ]
+          })
+        })
+
+        const extractData = await extractResponse.json()
+        let extractText = ""
+
+        if (typeof extractData.output_text === "string") {
+          extractText = extractData.output_text
+        }
+
+        if (!extractText && Array.isArray(extractData.output)) {
+          for (const item of extractData.output) {
+            if (item.type === "message" && Array.isArray(item.content)) {
+              for (const part of item.content) {
+                if (part.text) extractText += part.text
+              }
+            }
+          }
+        }
+
+        const parsed = JSON.parse(extractText.trim())
+        need = parsed.need || ""
+        service = parsed.service || ""
+
+      } catch (extractError) {
+        console.error("Error extrayendo need/service:", extractError.message)
+      }
+
+      // 💾 Guardar en Airtable
+      console.log("Guardando lead:", { name, email, whatsapp, need, service })
       try {
         await saveLeadToAirtable({
           name,
@@ -146,7 +195,6 @@ export default async function handler(req, res) {
         })
       } catch (airtableError) {
         console.error("Error guardando en Airtable:", airtableError.message)
-        // No interrumpimos la respuesta al usuario si falla Airtable
       }
     }
 
@@ -156,7 +204,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error(error)
-
     return res.status(500).json({
       error: "Server error",
       details: error.message
